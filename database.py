@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS runs (
     offers_sent  INTEGER NOT NULL DEFAULT 0,
     error        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS kv (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at BIGINT NOT NULL
+);
 """
 
 
@@ -263,3 +269,30 @@ class Database:
             )
             rows = cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------- kv
+    def kv_get(self, key: str) -> str | None:
+        with self._cursor() as cur:
+            cur.execute(self._sql("SELECT value FROM kv WHERE key = ?"), (key,))
+            row = cur.fetchone()
+        if row is None:
+            return None
+        value = row["value"] if isinstance(row, dict) else row[0]
+        return str(value) if value else None
+
+    def kv_set(self, key: str, value: str, now: int | None = None) -> None:
+        """Guarda um valor (ex.: access_token renovado da Shopee)."""
+        now = now or int(time.time())
+        with self._cursor() as cur:
+            cur.execute(
+                self._sql(
+                    """
+                    INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
+                    ON CONFLICT (key) DO UPDATE SET
+                        value = EXCLUDED.value,
+                        updated_at = EXCLUDED.updated_at
+                    """
+                ),
+                (key, value, now),
+            )
+        self._conn.commit()

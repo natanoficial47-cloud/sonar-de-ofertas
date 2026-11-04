@@ -2,7 +2,16 @@ name: Publicar ofertas no Telegram
 
 on:
   schedule:
-    - cron: "0 */2 * * *"
+    # A cada 4 horas (cron do GitHub Actions, UTC).
+    #
+    # Conta de minutos (GitHub Free, repositorio PRIVADO = 2000 min/mes):
+    #   */2 -> 12 jobs/dia = 360/mes x ~8 min = ~2880 min  (ESTOURA o limite)
+    #   */3 ->  8 jobs/dia = 240/mes x ~8 min = ~1920 min  (cabe, apertado)
+    #   */4 ->  6 jobs/dia = 180/mes x ~8 min = ~1440 min  (recomendado)
+    #
+    # Em repositorio PUBLICO os minutos sao gratis, entao da para usar "*/2".
+    # Em publico, cuidado: repo sem atividade por 60 dias desativa o cron.
+    - cron: "0 */4 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -12,12 +21,71 @@ on:
 
 concurrency:
   group: bot-ofertas
+  # Duas execucoes nunca disputam o mesmo grupo nem o mesmo banco.
   cancel-in-progress: true
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # O ciclo varre ~440 requests do Mercado Livre com espera entre eles:
+    # 10 min era apertado demais (o job era morto no meio da varredura).
+    timeout-minutes: 20
+
+    env:
+      # Aceita os dois nomes de secret: o padrao e o legado (TELEGRAM_TOKEN /
+      # ML_CLIENT_ID) que ja existia no repositorio. Assim nao e preciso
+      # renomear secret nenhum -- o primeiro que existir ganha.
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TELEGRAM_GROUP_ID }}
+      TELEGRAM_ENABLED: "true"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      AMAZON_ACCESS_KEY: ${{ secrets.AMAZON_ACCESS_KEY }}
+      AMAZON_SECRET_KEY: ${{ secrets.AMAZON_SECRET_KEY }}
+      AMAZON_PARTNER_ID: ${{ secrets.AMAZON_PARTNER_ID }}
+      AMAZON_PARTNER_TAG: ${{ secrets.AMAZON_PARTNER_TAG }}
+      AMAZON_REGION: ${{ secrets.AMAZON_REGION || 'us-east-1' }}
+
+      SHOPEE_PARTNER_ID: ${{ secrets.SHOPEE_PARTNER_ID }}
+      SHOPEE_PARTNER_KEY: ${{ secrets.SHOPEE_PARTNER_KEY }}
+      SHOPEE_SHOP_ID: ${{ secrets.SHOPEE_SHOP_ID }}
+      SHOPEE_ACCESS_TOKEN: ${{ secrets.SHOPEE_ACCESS_TOKEN }}
+      SHOPEE_REFRESH_TOKEN: ${{ secrets.SHOPEE_REFRESH_TOKEN }}
+
+      MERCADOLIVRE_ACCESS_TOKEN: ${{ secrets.MERCADOLIVRE_ACCESS_TOKEN }}
+      MERCADOLIVRE_CLIENT_ID: ${{ secrets.MERCADOLIVRE_CLIENT_ID || secrets.ML_CLIENT_ID }}
+      MERCADOLIVRE_CLIENT_SECRET: ${{ secrets.MERCADOLIVRE_CLIENT_SECRET || secrets.ML_CLIENT_SECRET }}
+      MERCADOLIVRE_AFFILIATE_ID: ${{ secrets.MERCADOLIVRE_AFFILIATE_ID }}
+      MERCADOLIVRE_SITE_ID: ${{ vars.MERCADOLIVRE_SITE_ID || 'MLB' }}
+      MERCADOLIVRE_SEARCH_LIMIT: ${{ vars.MERCADOLIVRE_SEARCH_LIMIT || '100' }}
+      MERCADOLIVRE_SEARCH_OFFSETS: ${{ vars.MERCADOLIVRE_SEARCH_OFFSETS || '0,100' }}
+      MERCADOLIVRE_MAX_PROBES: ${{ vars.MERCADOLIVRE_MAX_PROBES || '400' }}
+      MERCADOLIVRE_MAX_ITEMS: ${{ vars.MERCADOLIVRE_MAX_ITEMS || '20' }}
+      MERCADOLIVRE_REQUEST_DELAY: ${{ vars.MERCADOLIVRE_REQUEST_DELAY || '0.3' }}
+      MERCADOLIVRE_MAX_RETRIES: ${{ vars.MERCADOLIVRE_MAX_RETRIES || '3' }}
+      MERCADOLIVRE_RETRY_BACKOFF: ${{ vars.MERCADOLIVRE_RETRY_BACKOFF || '2' }}
+      MERCADOLIVRE_COMPARISON_MIN_RATIO: ${{ vars.MERCADOLIVRE_COMPARISON_MIN_RATIO || '0.35' }}
+
+      # Termos buscados: 22 nichos em 7 segmentos (nao so tech).
+      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'fone bluetooth,smartwatch,cadeira gamer,notebook,monitor gamer,mouse gamer rgb,teclado gamer,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete de yoga,suplemento,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,comedouro para gato,brinquedo para cachorro' }}
+      KEYWORDS_AMAZON: ${{ vars.KEYWORDS_AMAZON || 'notebook,smartwatch' }}
+      KEYWORDS_SHOPEE: ${{ vars.KEYWORDS_SHOPEE || 'fone bluetooth,tenis' }}
+      # So o Mercado Livre tem credencial configurada por enquanto. Amazon e
+      # Shopee entram no grupo de "ativas" so quando houverem secret.
+      OFFERS_SOURCES: ${{ vars.OFFERS_SOURCES || 'mercadolivre' }}
+
+      MIN_DISCOUNT_PCT: ${{ vars.MIN_DISCOUNT_PCT || '35' }}
+      MIN_COMPARISON_PCT: ${{ vars.MIN_COMPARISON_PCT || '25' }}
+      MIN_PRICE: ${{ vars.MIN_PRICE || '20' }}
+      MAX_PRICE: ${{ vars.MAX_PRICE || '3000' }}
+      MAX_OFFERS_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_CYCLE || '6' }}
+      # Variedade: no maximo 1 oferta da mesma categoria por ciclo, senao o
+      # grupo inteiro do dia sai de um nicho so.
+      MAX_OFFERS_PER_KEYWORD_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_KEYWORD_PER_CYCLE || '1' }}
+      RESEND_COOLDOWN_HOURS: ${{ vars.RESEND_COOLDOWN_HOURS || '24' }}
+      PRICE_DROP_RETRIGGER_PCT: ${{ vars.PRICE_DROP_RETRIGGER_PCT || '10' }}
+      POST_DEMO_OFFERS: ${{ vars.POST_DEMO_OFFERS || 'false' }}
+      LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
 
     steps:
       - name: Checkout
@@ -31,27 +99,13 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Preflight das credenciais
+        # 1 request por loja: se a credencial do ML estiver vencida ou o
+        # secret estiver errado, o job falha aqui -- em vez de publicar
+        # nada e descobrir o problema no grupo.
+        run: python scripts/check_sources.py --ping
+
       - name: Publicar ofertas
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
-          TELEGRAM_ENABLED: "true"
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
-          ML_CLIENT_ID: ${{ secrets.ML_CLIENT_ID }}
-          ML_CLIENT_SECRET: ${{ secrets.ML_CLIENT_SECRET }}
-          MERCADOLIVRE_AFFILIATE_ID: ${{ secrets.MERCADOLIVRE_AFFILIATE_ID }}
-          MERCADOLIVRE_SITE_ID: ${{ secrets.MERCADOLIVRE_SITE_ID }}
-
-          ACTIVE_SOURCES: "mercadolivre"
-          MIN_DISCOUNT_PCT: ${{ vars.MIN_DISCOUNT_PCT || '35' }}
-          MIN_PRICE: ${{ vars.MIN_PRICE || '49.9' }}
-          MAX_PRICE: ${{ vars.MAX_PRICE || '3000' }}
-          MAX_OFFERS_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_CYCLE || '5' }}
-          RESEND_COOLDOWN_HOURS: ${{ vars.RESEND_COOLDOWN_HOURS || '24' }}
-          PRICE_DROP_RETRIGGER_PCT: ${{ vars.PRICE_DROP_RETRIGGER_PCT || '10' }}
-          POST_DEMO_OFFERS: ${{ vars.POST_DEMO_OFFERS || 'false' }}
-          LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             python main.py --once --dry-run

@@ -13,6 +13,7 @@ import asyncio
 import logging
 import signal
 import sys
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -49,7 +50,45 @@ def build_adapters(settings: Settings) -> list[Any]:
         MercadoLivreAdapter(settings.mercadolivre),
     ]
     wanted = {s.strip().lower() for s in settings.sources}
-    return [a for a in all_adapters if a.name.lower() in wanted]
+    return [a for a in all_adapters if a.source_key in wanted]
+
+
+def apply_persisted_secrets(settings: Settings, db: Database) -> Settings:
+    """Reaplica segredos guardados no banco (tokens renovados).
+
+    O access_token da Shopee expira em ~4h e o do Mercado Livre em ~6h; guardar
+    o token novo no banco evita depender do .env em cada execucao do cron.
+    """
+    token = db.kv_get("shopee_access_token")
+    if token and token != settings.shopee.access_token:
+        log.info("Token da Shopee restaurado do banco")
+        settings = replace(
+            settings,
+            shopee=replace(settings.shopee, access_token=token),
+        )
+
+    ml_token = db.kv_get("mercadolivre_access_token")
+    if ml_token and ml_token != settings.mercadolivre.access_token:
+        log.info("Token do Mercado Livre restaurado do banco")
+        settings = replace(
+            settings,
+            mercadolivre=replace(settings.mercadolivre, access_token=ml_token),
+        )
+    return settings
+
+
+def persist_refreshed_secrets(adapters: list[Any], db: Database) -> None:
+    """Grava tokens renovados durante o ciclo."""
+    for adapter in adapters:
+        token = getattr(adapter, "refreshed_access_token", None)
+        if not token:
+            continue
+        if adapter.name == "Shopee":
+            db.kv_set("shopee_access_token", token)
+            log.info("Token da Shopee salvo no banco")
+        elif adapter.name == "Mercado Livre":
+            db.kv_set("mercadolivre_access_token", token)
+            log.info("Token do Mercado Livre salvo no banco")
 
 
 async def fetch_all(adapters: list[Any], cycle: int) -> list[Offer]:
@@ -90,6 +129,8 @@ async def run_cycle(
         found = len(offers)
         log.info("Ciclo %d: %d oferta(s) bruta(s) coletada(s)", cycle, found)
 
+        persist_refreshed_secrets(adapters, db)
+
         for offer in offers:
             db.record_seen(offer)
 
@@ -98,9 +139,12 @@ async def run_cycle(
             log.debug("Descartada: %s (%s)", offer.title, reason)
 
         publisher = publisher or TelegramPublisher(settings)
-        sent = await publisher.publish(selection.to_send)
+        sent_offers = await publisher.publish(selection.to_send)
+        sent = len(sent_offers)
 
-        for offer in selection.to_send:
+        # So marca como enviado o que realmente saiu: em dry-run ou em falha
+        # de envio, a oferta continua pendente para o proximo ciclo.
+        for offer in sent_offers:
             db.mark_sent(offer)
 
         log.info(
@@ -136,11 +180,13 @@ async def run_daemon(settings: Settings) -> int:
             pass
 
     db = Database(settings.database_url).connect()
-    cycle = 0
+    settings = apply_persisted_secrets(settings, db)
+    cycle = int(db.kv_get("cycle_counter") or 0)
     try:
         while not stop.is_set():
             await run_cycle(settings, db, cycle)
             cycle += 1
+            db.kv_set("cycle_counter", str(cycle))
             try:
                 await asyncio.wait_for(stop.wait(), timeout=settings.interval_seconds)
             except asyncio.TimeoutError:
@@ -152,8 +198,14 @@ async def run_daemon(settings: Settings) -> int:
 
 async def run_once(settings: Settings) -> int:
     db = Database(settings.database_url).connect()
+    settings = apply_persisted_secrets(settings, db)
     try:
-        result = await run_cycle(settings, db, cycle=0)
+        # O contador de ciclo vive no banco: no cron cada execucao e um
+        # processo novo, e sem isso a rotacao de produtos do Mercado Livre
+        # (que evita repetir as mesmas ofertas) sempre comecaria do zero.
+        cycle = int(db.kv_get("cycle_counter") or 0)
+        result = await run_cycle(settings, db, cycle=cycle)
+        db.kv_set("cycle_counter", str(cycle + 1))
     finally:
         db.close()
     return 0 if result["status"] == "ok" else 1

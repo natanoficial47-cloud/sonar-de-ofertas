@@ -128,6 +128,7 @@ def _dig(data: Any, *paths: tuple[Any, ...]) -> Any:
 
 class AmazonAdapter(StoreAdapter):
     name = "Amazon"
+    key = "amazon"
 
     def __init__(self, settings: AmazonSettings):
         super().__init__(settings)
@@ -137,43 +138,101 @@ class AmazonAdapter(StoreAdapter):
     def configured(self) -> bool:
         return self.cfg.configured
 
+    async def ping(self, client: Any) -> str:
+        """Um SearchItems com 1 resultado prova que as chaves AWS valem."""
+        params = {
+            "keywords": self.cfg.keywords[0] if self.cfg.keywords else "notebook",
+            "partnerTag": self.cfg.partner_tag,
+            "itemCount": "1",
+            "searchIndex": "All",
+        }
+        partner_id = self.cfg.partner_id or self.cfg.partner_tag
+        if partner_id:
+            params["PartnerId"] = partner_id
+        headers = build_signed_headers(
+            method="GET",
+            path="/paapi5/searchitems",
+            params=params,
+            headers={
+                "host": self.cfg.host,
+                "x-amz-target": TARGET,
+                "user-agent": "bot-ofertas-telegram/1.0",
+            },
+            access_key=self.cfg.access_key,
+            secret_key=self.cfg.secret_key,
+            region=self.cfg.region,
+        )
+        url = f"https://{self.cfg.host}/paapi5/searchitems?{_canonical_query(params)}"
+        response = await client.get(url, headers=headers)
+        if response.status_code != 200:
+            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:150]}")
+        return "chaves AWS validas, SearchItems respondendo"
+
     async def fetch(self, client: Any) -> list[Offer]:
-        url = f"https://{self.cfg.host}/paapi5/searchitems"
         offers: list[Offer] = []
         seen: set[str] = set()
 
         for keyword in self.cfg.keywords:
-            params = {
-                "keywords": keyword,
-                "partnerTag": self.cfg.partner_tag,
-                "itemCount": "10",
-                "searchIndex": "All",
-            }
-            headers = build_signed_headers(
-                method="GET",
-                path="/paapi5/searchitems",
-                params=params,
-                headers={
-                    "host": self.cfg.host,
-                    "x-amz-target": TARGET,
-                    "user-agent": "bot-ofertas-telegram/1.0",
-                },
-                access_key=self.cfg.access_key,
-                secret_key=self.cfg.secret_key,
-                region=self.cfg.region,
-            )
+            # Uma keyword quebrada (503, throttling) nao pode derrubar as
+            # outras: o erro fica registrado e o ciclo segue.
+            try:
+                found = await self._fetch_keyword(client, keyword, offers, seen)
+            except Exception as exc:  # noqa: BLE001
+                log.error("[Amazon] Falha na keyword '%s': %s", keyword, exc)
+                continue
+            offers = found
 
-            response = await client.get(url, params=params, headers=headers)
-            response.raise_for_status()
-            payload = response.json()
+        return offers
 
-            items = _dig(payload, ("data", "SearchResults", "Items")) or []
-            for item in items:
-                offer = self._parse_item(item)
-                if offer is None or offer.url_hash in seen:
-                    continue
-                seen.add(offer.url_hash)
-                offers.append(offer)
+    async def _fetch_keyword(
+        self,
+        client: Any,
+        keyword: str,
+        offers: list[Offer],
+        seen: set[str],
+    ) -> list[Offer]:
+        params = {
+            "keywords": keyword,
+            "partnerTag": self.cfg.partner_tag,
+            "itemCount": "10",
+            "searchIndex": "All",
+        }
+        # A PA-API aceita um PartnerId separado do tag (sub-tag). Sem ele,
+        # usamos o proprio tracking ID.
+        partner_id = self.cfg.partner_id or self.cfg.partner_tag
+        if partner_id:
+            params["PartnerId"] = partner_id
+        headers = build_signed_headers(
+            method="GET",
+            path="/paapi5/searchitems",
+            params=params,
+            headers={
+                "host": self.cfg.host,
+                "x-amz-target": TARGET,
+                "user-agent": "bot-ofertas-telegram/1.0",
+            },
+            access_key=self.cfg.access_key,
+            secret_key=self.cfg.secret_key,
+            region=self.cfg.region,
+        )
+
+        # A URL e montada aqui (e nao pelo httpx) para que a query string
+        # enviada na rede seja byte a byte a mesma que foi assinada.
+        # O httpx codifica espaco como '+', o que quebraria a assinatura.
+        query = _canonical_query(params)
+        url = f"https://{self.cfg.host}/paapi5/searchitems?{query}"
+
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        payload = response.json()
+
+        items = _dig(payload, ("data", "SearchResults", "Items")) or []
+        for item in items:
+            offer = self._parse_item(item)
+            if offer is None or offer.url_hash in seen:
+                continue
+            seen.add(offer.url_hash)
+            offers.append(offer)
 
         return offers
 

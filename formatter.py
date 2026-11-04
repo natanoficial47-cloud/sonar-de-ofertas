@@ -39,16 +39,42 @@ def build_message(offer: Offer) -> str:
     lines.append("")
     lines.append(f"\U0001f4e6   <b>{title}</b>")
 
-    if offer.original_price and offer.original_price > offer.current_price:
-        lines.append(f"\U0001f4b0   De: ~{brl(offer.original_price)}~")
+    discount = offer.effective_discount
+    comparison = offer.effective_comparison_pct
 
-    discount = f" ({offer.effective_discount:.0f}% OFF)" if offer.effective_discount else ""
-    lines.append(
-        f"⚡   <b>Por: {brl(offer.current_price)}</b> <i>{discount.strip()}</i>".replace(
-            "<i></i>", ""
+    if discount > 0:
+        lines.append(f"\U0001f4b0   De: {brl(offer.original_price)}")
+        lines.append(
+            f"⚡   <b>Por: {brl(offer.current_price)}</b> <i>({discount:.0f}% OFF)</i>"
         )
-    )
+        nota = "Desconto sobre o preço de tabela do anúncio"
+        if offer.table_corroborated:
+            nota += " (mesmo preço em outros vendedores do produto)"
+        lines.append(f"   <i>{nota}</i>")
+    else:
+        if comparison > 0:
+            extra = " com frete grátis" if offer.free_shipping else ""
+            lines.append(
+                f"\U0001f4d7   <b>Menor preço entre {offer.comparison_count} ofertas "
+                f"do produto{extra}</b> (preço típico {brl(offer.comparison_price)})"
+            )
+            lines.append(
+                f"   <i>Economia de {comparison:.0f}% frente ao preço típico "
+                "do produto</i>"
+            )
+        lines.append(f"⚡   <b>Por: {brl(offer.current_price)}</b>")
+
     lines.append(f"\U0001f6d2   <i>Loja:</i> {escape_text(offer.store)}")
+
+    if offer.keyword:
+        # O rotulo e o termo de busca usado, nao a categoria oficial do
+        # produto: a API nao devolve o nome da categoria. "Busca" nao mente.
+        lines.append(f"\U0001f3f7   <i>Busca:</i> {escape_text(offer.keyword)}")
+
+    if offer.free_shipping:
+        lines.append("\U0001f69a   <i>Frete: grátis</i>")
+    elif offer.shipping_cost:
+        lines.append(f"\U0001f69a   <i>Frete: {brl(offer.shipping_cost)}</i>")
 
     if offer.coupon:
         lines.append(f"\U0001f3e6   <i>Cupom:</i> {escape_text(offer.coupon)}")

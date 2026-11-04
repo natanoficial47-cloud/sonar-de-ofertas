@@ -13,9 +13,19 @@ log = logging.getLogger(__name__)
 
 class StoreAdapter(ABC):
     name: str = "loja"
+    # Chave usada em OFFERS_SOURCES (sem espacos, minuscula).
+    key: str = ""
 
     def __init__(self, settings: Any):
         self.settings = settings
+        # Numero do ciclo atual: permite variar a coleta entre execucoes
+        # (o cron roda de 2 em 2 horas e precisa achar coisa nova).
+        self.cycle = 0
+
+    @property
+    def source_key(self) -> str:
+        """Identificador da loja em OFFERS_SOURCES."""
+        return self.key or self.name.lower().replace(" ", "")
 
     @property
     def configured(self) -> bool:
@@ -25,6 +35,15 @@ class StoreAdapter(ABC):
     @abstractmethod
     async def fetch(self, client: Any) -> list[Offer]:
         """Busca ofertas reais na loja."""
+
+    async def ping(self, client: Any) -> str:
+        """Teste rapido de credencial: 1 request, sem varrer o catalogo.
+
+        Usado pelo preflight do deploy (`check_sources.py --ping`) para
+        descobrir credencial quebrada *antes* de rodar o ciclo completo.
+        Lojas que nao implementam o teste retornam uma mensagem explicativa.
+        """
+        return "sem teste rapido implementado"
 
     def mock_offers(self, cycle: int = 0) -> list[Offer]:
         """Ofertas de demonstracao, usadas quando a loja nao esta configurada."""
@@ -48,6 +67,7 @@ class StoreAdapter(ABC):
             return offers
 
         try:
+            self.cycle = cycle
             offers = await self.fetch(client)
             log.info("[%s] %d oferta(s) obtidas da API", self.name, len(offers))
             return offers

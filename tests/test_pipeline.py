@@ -15,6 +15,7 @@ from models import Offer
 from pipeline import select_offers
 from services.amazon import build_signed_headers
 from services.shopee import sign_request
+from config import ShopeeSettings
 from telegram_client import TelegramPublisher
 
 
@@ -62,6 +63,7 @@ def db(settings: Settings) -> Database:
 class FakeBot:
     def __init__(self, failures: int = 0, error: Exception | None = None):
         self.messages: list[dict] = []
+        self.photos: list[dict] = []
         self.failures = failures
         self.error = error
 
@@ -71,6 +73,13 @@ class FakeBot:
             raise self.error or RuntimeError("falha temporaria")
         self.messages.append(kwargs)
         return {"message_id": len(self.messages)}
+
+    async def send_photo(self, **kwargs):
+        if self.failures > 0:
+            self.failures -= 1
+            raise self.error or RuntimeError("falha temporaria")
+        self.photos.append(kwargs)
+        return {"message_id": len(self.photos)}
 
 
 class FakeAdapter:
@@ -231,43 +240,147 @@ def test_dry_run_nao_envia(settings, db):
     bot = FakeBot()
     publisher = TelegramPublisher(settings, bot=bot)
     resultado = asyncio.run(publisher.publish([make_offer()]))
-    assert resultado == 0
+    assert resultado == []
     assert bot.messages == []
+
+
+def test_ciclo_em_dry_run_nao_marca_oferta_como_enviada(settings, db):
+    """Regressao: dry-run nao pode 'gastar' a oferta na anti-duplicidade."""
+    from main import run_cycle
+
+    settings = Settings(**{**settings.__dict__, "telegram_enabled": False})
+    publisher = TelegramPublisher(settings, bot=FakeBot())
+    oferta = make_offer(url="https://shopee.com.br/dry", discount_pct=70.0)
+
+    asyncio.run(
+        run_cycle(
+            settings,
+            db,
+            publisher=publisher,
+            adapters=[FakeAdapter([oferta])],
+        )
+    )
+
+    row = db.get_offer(oferta.url_hash)
+    assert row is not None
+    assert row["last_sent_at"] is None
+    assert row["send_count"] == 0
+
+    # No ciclo seguinte a oferta continua disponivel para envio real.
+    send, _ = db.should_send(oferta)
+    assert send is True
+
+
+def test_ciclo_marca_somente_o_que_foi_enviado(settings, db):
+    from main import run_cycle
+
+    ofertas = [
+        make_offer(url="https://shopee.com.br/ok", external_id="ok", discount_pct=70.0),
+        make_offer(url="https://shopee.com.br/erro", external_id="erro", discount_pct=65.0),
+    ]
+
+    class MeiaFalhaBot(FakeBot):
+        async def send_message(self, **kwargs):
+            if "erro" in kwargs.get("text", ""):
+                raise RuntimeError("falha ao enviar")
+            return await super().send_message(**kwargs)
+
+    publisher = TelegramPublisher(settings, bot=MeiaFalhaBot(), sleep=lambda *_: asyncio.sleep(0))
+    resultado = asyncio.run(
+        run_cycle(settings, db, publisher=publisher, adapters=[FakeAdapter(ofertas)])
+    )
+
+    assert resultado["sent"] == 1
+    enviada = db.get_offer(ofertas[0].url_hash)
+    falhou = db.get_offer(ofertas[1].url_hash)
+    assert enviada["last_sent_at"] is not None
+    assert enviada["send_count"] == 1
+    assert falhou["last_sent_at"] is None
+    assert falhou["send_count"] == 0
 
 
 def test_publicador_tenta_novamente_apos_falha(settings):
     bot = FakeBot(failures=1)
     publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
     enviados = asyncio.run(publisher.publish([make_offer()]))
-    assert enviados == 1
+    assert len(enviados) == 1
     assert len(bot.messages) == 1
+
+
+def test_publicador_manda_a_foto_do_produto(settings):
+    """Com imagem, a oferta vai como foto com a legenda."""
+    bot = FakeBot()
+    publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
+    oferta = make_offer(image_url="https://http2.mlstatic.com/foto.jpg")
+    enviados = asyncio.run(publisher.publish([oferta]))
+    assert len(enviados) == 1
+    assert len(bot.photos) == 1
+    assert bot.photos[0]["photo"] == "https://http2.mlstatic.com/foto.jpg"
+    assert "CLIQUE AQUI PARA COMPRAR" in bot.photos[0]["caption"]
+    assert bot.messages == []
+
+
+def test_publicador_cai_para_o_texto_quando_a_foto_falha(settings):
+    """Foto quebrada nao pode derrubar a oferta."""
+
+    class SemFoto(FakeBot):
+        async def send_photo(self, **kwargs):
+            raise RuntimeError("wrong file identifier")
+
+    bot = SemFoto()
+    publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
+    oferta = make_offer(image_url="https://http2.mlstatic.com/foto.jpg")
+    enviados = asyncio.run(publisher.publish([oferta]))
+    assert len(enviados) == 1
+    assert bot.messages and not bot.photos
+
+
+def test_erro_generico_nao_e_tratado_como_flood(settings):
+    """Regressao: RetryAfter/Forbidden nao podem virar alias de Exception."""
+    import telegram_client
+
+    assert telegram_client.TELEGRAM_AVAILABLE is True
+    assert telegram_client.RetryAfter is not Exception
+    assert telegram_client.Forbidden is not Exception
+    assert telegram_client.TelegramError is not Exception
+    assert telegram_client.RetryAfter is not telegram_client.TelegramError
+
+
+def test_parse_mode_html_disponivel():
+    import telegram_client
+
+    assert getattr(telegram_client.ParseMode, "HTML", "HTML")
 
 
 # ------------------------------------------------------------------ assinaturas
 def test_shopee_assinatura_conhecida():
-    import base64
+    # Spec oficial v2: hex(HMAC-SHA256(partner_id + path + ts + token + shop))
     import hashlib
     import hmac
-    from urllib.parse import quote
 
-    path = "/api/v2/product/get_items"
-    params = {"partner_id": "123", "page": 1, "page_size": 50, "timestamp": 1700000000}
-    esperado = base64.b64encode(
-        hmac.new(
-            b"chave-secreta",
-            (
-                path
-                + quote("page", safe="")
-                + quote("1", safe="")
-                + quote("page_size", safe="")
-                + quote("50", safe="")
-                + quote("timestamp", safe="")
-                + quote("1700000000", safe="")
-            ).encode(),
-            hashlib.sha256,
-        ).digest()
-    ).decode()
-    assert sign_request("chave-secreta", path, params) == esperado
+    esperado = hmac.new(
+        b"chave-secreta",
+        b"10090/api/v2/product/get_items1594897040token1239876",
+        hashlib.sha256,
+    ).hexdigest()
+    assinatura = sign_request(
+        "10090",
+        "chave-secreta",
+        "/api/v2/product/get_items",
+        1594897040,
+        "token123",
+        "9876",
+    )
+    assert assinatura == esperado
+    assert len(assinatura) == 64
+    assert assinatura == assinatura.lower()
+
+
+def test_shopee_sem_credencial_fica_em_demo():
+    from services import ShopeeAdapter
+
+    adapter = ShopeeAdapter(ShopeeSettings())
+    assert adapter.configured is False
 
 
 def test_amazon_sigv4_gera_authorization_valido():
@@ -289,3 +402,213 @@ def test_amazon_sigv4_gera_authorization_valido():
     assert "SignedHeaders=host;x-amz-date;x-amz-target" in auth
     assert "Signature=" in auth
     assert headers["X-Amz-Date"] == "20261029T204815Z"
+
+
+# ------------------------------------------------------------------ variedade
+def test_ciclo_nao_repete_a_mesma_categoria(settings, db):
+    """O teto por categoria impede o grupo inteiro do ciclo vir de um nicho."""
+    from dataclasses import replace
+
+    settings = replace(settings, max_offers_per_keyword_per_cycle=1)
+    ofertas = [
+        make_offer(
+            external_id=f"mlb{i}",
+            url=f"https://www.mercadolivre.com.br/p/MLB{i}?item_id=MLB{i}",
+            title=f"Produto {i}",
+            keyword="cadeira gamer",
+            discount_pct=90.0 - i,
+        )
+        for i in range(3)
+    ] + [
+        make_offer(
+            external_id="outro",
+            url="https://www.mercadolivre.com.br/p/MLB99?item_id=MLB99",
+            title="Air Fryer",
+            keyword="air fryer",
+            discount_pct=50.0,
+        )
+    ]
+
+    selection = select_offers(ofertas, db, settings)
+
+    categorias = [o.keyword for o in selection.to_send]
+    assert categorias.count("cadeira gamer") == 1
+    assert "air fryer" in categorias
+    reasons = [motivo for _, motivo in selection.skipped]
+    assert any("categoria ja repetida" in motivo for motivo in reasons)
+
+
+def test_mensagem_mostra_a_categoria(settings, db):
+    offer = make_offer(keyword="air fryer")
+    mensagem = build_message(offer)
+    assert "Busca:" in mensagem
+    assert "air fryer" in mensagem
+
+
+# ----------------------------------------------------- nao-duplicacao no envio
+def test_timeout_na_foto_nao_reenvia_e_nao_manda_texto(settings):
+    """Timeout no envio: pode ter chegado ao grupo, entao nao repetimos.
+
+    Era exatamente o bug que duplicava oferta: o PTB dava timeout de 5s ao
+    baixar a foto do CDN, o retry reenviava e a oferta aparecia duas vezes.
+    """
+    import telegram_client
+
+    class TimeoutFotoBot(FakeBot):
+        def __init__(self):
+            super().__init__()
+            self.chamadas = 0
+
+        async def send_photo(self, **kwargs):
+            self.chamadas += 1
+            raise telegram_client.TimedOut("Timed out")
+
+        async def send_message(self, **kwargs):
+            self.chamadas += 1
+            return await super().send_message(**kwargs)
+
+    bot = TimeoutFotoBot()
+    publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
+    oferta = make_offer(image_url="https://http2.mlstatic.com/foto.jpg")
+
+    enviados = asyncio.run(publisher.publish([oferta]))
+
+    assert len(enviados) == 1  # marcada como enviada
+    assert bot.chamadas == 1  # uma unica tentativa
+    assert bot.messages == []  # nenhum texto de fallback (duplicaria)
+
+
+def test_timeout_no_texto_nao_reenvia(settings):
+    import telegram_client
+
+    class TimeoutTextoBot(FakeBot):
+        def __init__(self):
+            super().__init__()
+            self.chamadas = 0
+
+        async def send_message(self, **kwargs):
+            self.chamadas += 1
+            raise telegram_client.TimedOut("Timed out")
+
+    bot = TimeoutTextoBot()
+    publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
+
+    enviados = asyncio.run(publisher.publish([make_offer()]))
+
+    assert len(enviados) == 1
+    assert bot.chamadas == 1
+    assert bot.messages == []
+
+
+def test_timeout_httpx_tambem_e_considerado_incerto(settings):
+    """httpx.TimeoutException (por baixo do PTB) nao pode virar retry."""
+    httpx = pytest.importorskip("httpx")
+
+    class TimeoutHttpxBot(FakeBot):
+        def __init__(self):
+            super().__init__()
+            self.chamadas = 0
+
+        async def send_message(self, **kwargs):
+            self.chamadas += 1
+            raise httpx.ReadTimeout("read timeout")
+
+    bot = TimeoutHttpxBot()
+    publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
+
+    enviados = asyncio.run(publisher.publish([make_offer()]))
+
+    assert len(enviados) == 1
+    assert bot.chamadas == 1
+
+
+def test_bad_request_nao_e_repetido(settings):
+    """Erro definitivo do Telegram nao entra em loop de retry."""
+    import telegram_client
+
+    class BadRequestBot(FakeBot):
+        def __init__(self):
+            super().__init__()
+            self.chamadas = 0
+
+        async def send_message(self, **kwargs):
+            self.chamadas += 1
+            raise telegram_client.BadRequest("chat not found")
+
+    bot = BadRequestBot()
+    publisher = TelegramPublisher(settings, bot=bot, sleep=lambda *_: asyncio.sleep(0))
+
+    enviados = asyncio.run(publisher.publish([make_offer()]))
+
+    assert enviados == []
+    assert bot.chamadas == 1
+
+
+def test_timeout_marca_oferta_como_enviada_no_ciclo(settings, db):
+    """End-to-end: oferta com timeout nao volta no ciclo seguinte."""
+    from main import run_cycle
+    import telegram_client
+
+    class TimeoutFotoBot(FakeBot):
+        async def send_photo(self, **kwargs):
+            raise telegram_client.TimedOut("Timed out")
+
+    oferta = make_offer(
+        external_id="dup",
+        url="https://www.mercadolivre.com.br/p/MLBdup?item_id=MLBdup",
+        image_url="https://http2.mlstatic.com/foto.jpg",
+        discount_pct=70.0,
+    )
+    publisher = TelegramPublisher(
+        settings, bot=TimeoutFotoBot(), sleep=lambda *_: asyncio.sleep(0)
+    )
+
+    primeiro = asyncio.run(
+        run_cycle(settings, db, publisher=publisher, adapters=[FakeAdapter([oferta])])
+    )
+    assert primeiro["sent"] == 1
+
+    row = db.get_offer(oferta.url_hash)
+    assert row["last_sent_at"] is not None
+
+    segundo = asyncio.run(
+        run_cycle(settings, db, publisher=publisher, adapters=[FakeAdapter([oferta])])
+    )
+    assert segundo["sent"] == 0  # nao volta a ser publicada
+
+
+def test_timeouts_do_telegram_sao_configurados(settings):
+    """O PTB usa 5s de leitura por padrao -- curto para foto do CDN."""
+    import telegram_client
+
+    assert telegram_client.READ_TIMEOUT_SECONDS >= 60
+    assert telegram_client.CONNECT_TIMEOUT_SECONDS >= 15
+
+
+# ------------------------------------------------------------- config de deploy
+def test_em_ci_sqlite_e_reprovado(settings, monkeypatch):
+    """No runner do GitHub o SQLite e efemero: o bot repetiria as ofertas.
+
+    Sem esse trava, uma DATABASE_URL faltando no secret faria o job rodar
+    'com sucesso' e publicar as mesmas ofertas a cada 2 horas, para sempre.
+    """
+    monkeypatch.setenv("CI", "true")
+    problems = settings.validate()
+    assert any("Postgres" in p for p in problems)
+
+
+def test_em_ci_postgres_passa_na_validacao(settings, monkeypatch):
+    monkeypatch.setenv("CI", "true")
+    settings = Settings(
+        **{**settings.__dict__, "database_url": "postgresql://u:p@host:5432/db?sslmode=require"}
+    )
+    problems = settings.validate()
+    assert not any("Postgres" in p for p in problems)
+
+
+def test_fora_do_ci_sqlite_e_permitido(settings, monkeypatch):
+    """Em dev local o SQLite continua valendo (e e o que os testes usam)."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    problems = settings.validate()
+    assert not any("Postgres" in p for p in problems)
