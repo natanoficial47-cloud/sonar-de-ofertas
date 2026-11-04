@@ -114,7 +114,7 @@ class Settings:
     shopee: ShopeeSettings = field(default_factory=ShopeeSettings)
     mercadolivre: MercadoLivreSettings = field(default_factory=MercadoLivreSettings)
     # Fontes ativas: amazon, shopee, mercadolivre
-    sources: tuple[str, ...] = ("amazon", "shopee", "mercadolivre")
+    sources: tuple[str, ...] = ("mercadolivre")
 
     min_discount_pct: float = 35.0
     min_price: float = 49.9
