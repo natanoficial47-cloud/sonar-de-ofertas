@@ -366,14 +366,28 @@ pode ser disparado na mão (*Run workflow*), com a opção de dry-run.
    credencial vale; se vier `FALHOU`, o job nem começa.
 3. **Secrets no repositório** (Settings → Secrets and variables → Actions):
 
-   | Secret | Origem |
-   | --- | --- |
-   | `TELEGRAM_BOT_TOKEN` | `@BotFather` |
-   | `TELEGRAM_CHAT_ID` | id do grupo (`-100...`) |
-   | `DATABASE_URL` | Supabase, com `?sslmode=require` |
-   | `MERCADOLIVRE_CLIENT_ID` / `MERCADOLIVRE_CLIENT_SECRET` | painel do ML |
-   | `MERCADOLIVRE_AFFILIATE_ID` | seu ID de afiliado |
-   | `AMAZON_*`, `SHOPEE_*` | quando tiver as credenciais |
+   | Secret | Origem | Nome legado aceito |
+   | --- | --- | --- |
+   | `TELEGRAM_BOT_TOKEN` | `@BotFather` (token **novo**) | `TELEGRAM_TOKEN` |
+   | `TELEGRAM_CHAT_ID` | id do grupo (`-100...`) | `TELEGRAM_GROUP_ID` |
+   | `DATABASE_URL` | Supabase, com `?sslmode=require` | — |
+   | `MERCADOLIVRE_CLIENT_ID` | painel do ML | `ML_CLIENT_ID` |
+   | `MERCADOLIVRE_CLIENT_SECRET` | painel do ML | `ML_CLIENT_SECRET` |
+   | `MERCADOLIVRE_AFFILIATE_ID` | seu ID de afiliado | — |
+   | `AMAZON_*`, `SHOPEE_*` | quando tiver as credenciais | — |
+
+   > Os nomes legados funcionam porque o workflow usa
+   > `secrets.TELEGRAM_BOT_TOKEN || secrets.TELEGRAM_TOKEN` — o primeiro que
+   > existir ganha. **Não precisa renomear secret nenhum.**
+   >
+   > `DATABASE_URL` é **obrigatório**: sem ele (ou com SQLite) o job falha na
+   > hora, com a mensagem "DATABASE_URL em CI precisa ser Postgres". Isso é
+   > proposital — com SQLite o runner recria o banco a cada ciclo e o bot
+   > repetiria as mesmas ofertas no grupo para sempre.
+   >
+   > O `MERCADOLIVRE_CLIENT_SECRET` tem que ser o valor **exato** do painel do
+   > ML. Um caractere trocado (ex.: `I` no lugar de `l`) devolve *400 Bad
+   > Request* no `oauth/token` e o preflight acusa a falha antes do job.
 
    *Variables* (opcionais, com default no workflow): `MIN_DISCOUNT_PCT`,
    `MIN_COMPARISON_PCT`, `MAX_OFFERS_PER_CYCLE`,
