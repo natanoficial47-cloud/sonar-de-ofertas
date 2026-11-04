@@ -1,17 +1,48 @@
-- name: Publicar ofertas
+name: Publicar ofertas no Telegram
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rodar sem enviar ao Telegram"
+        type: boolean
+        default: false
+
+concurrency:
+  group: bot-ofertas
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Publicar ofertas
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
           TELEGRAM_ENABLED: "true"
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-          # Variáveis ativas apenas do Mercado Livre
           ML_CLIENT_ID: ${{ secrets.ML_CLIENT_ID }}
           ML_CLIENT_SECRET: ${{ secrets.ML_CLIENT_SECRET }}
           MERCADOLIVRE_AFFILIATE_ID: ${{ secrets.MERCADOLIVRE_AFFILIATE_ID }}
           MERCADOLIVRE_SITE_ID: ${{ secrets.MERCADOLIVRE_SITE_ID }}
 
-          # Fontes ativas e parâmetros
           ACTIVE_SOURCES: "mercadolivre"
           MIN_DISCOUNT_PCT: ${{ vars.MIN_DISCOUNT_PCT || '35' }}
           MIN_PRICE: ${{ vars.MIN_PRICE || '49.9' }}
