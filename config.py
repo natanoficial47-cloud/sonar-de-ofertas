@@ -114,7 +114,7 @@ class Settings:
     shopee: ShopeeSettings = field(default_factory=ShopeeSettings)
     mercadolivre: MercadoLivreSettings = field(default_factory=MercadoLivreSettings)
     # Fontes ativas: amazon, shopee, mercadolivre
-    sources: tuple[str, ...] = ("mercadolivre")
+    sources: tuple[str, ...] = ("mercadolivre",)
 
     min_discount_pct: float = 35.0
     min_price: float = 49.9
@@ -164,7 +164,7 @@ class Settings:
                     ("fone bluetooth", "smartwatch", "cadeira gamer"),
                 ),
             ),
-            sources=_keywords("OFFERS_SOURCES", ("amazon", "shopee", "mercadolivre")),
+            sources=_keywords("OFFERS_SOURCES", ("mercadolivre",)),
             min_discount_pct=_float("MIN_DISCOUNT_PCT", 35.0),
             min_price=_float("MIN_PRICE", 49.9),
             max_price=_float("MAX_PRICE", 3000.0),
