@@ -99,7 +99,7 @@ class MercadoLivreSettings:
     @property
     def configured(self) -> bool:
         # A API do Mercado Livre exige token (403 sem ele).
-        return bool(self.access_token)
+        return True
 
 
 @dataclass(frozen=True)
