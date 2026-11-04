@@ -1,0 +1,69 @@
+name: Publicar ofertas no Telegram
+
+on:
+  schedule:
+    # A cada 2 horas (cron do GitHub Actions, UTC)
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rodar sem enviar ao Telegram"
+        type: boolean
+        default: false
+
+concurrency:
+  group: bot-ofertas
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Publicar ofertas
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_ENABLED: "true"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+          AMAZON_ACCESS_KEY: ${{ secrets.AMAZON_ACCESS_KEY }}
+          AMAZON_SECRET_KEY: ${{ secrets.AMAZON_SECRET_KEY }}
+          AMAZON_PARTNER_ID: ${{ secrets.AMAZON_PARTNER_ID }}
+          AMAZON_PARTNER_TAG: ${{ secrets.AMAZON_PARTNER_TAG }}
+          AMAZON_REGION: ${{ secrets.AMAZON_REGION }}
+
+          SHOPEE_PARTNER_ID: ${{ secrets.SHOPEE_PARTNER_ID }}
+          SHOPEE_PARTNER_KEY: ${{ secrets.SHOPEE_PARTNER_KEY }}
+          SHOPEE_SHOP_ID: ${{ secrets.SHOPEE_SHOP_ID }}
+
+          MERCADOLIVRE_ACCESS_TOKEN: ${{ secrets.MERCADOLIVRE_ACCESS_TOKEN }}
+          MERCADOLIVRE_AFFILIATE_ID: ${{ secrets.MERCADOLIVRE_AFFILIATE_ID }}
+          MERCADOLIVRE_SITE_ID: ${{ secrets.MERCADOLIVRE_SITE_ID }}
+
+          MIN_DISCOUNT_PCT: ${{ vars.MIN_DISCOUNT_PCT || '35' }}
+          MIN_PRICE: ${{ vars.MIN_PRICE || '49.9' }}
+          MAX_PRICE: ${{ vars.MAX_PRICE || '3000' }}
+          MAX_OFFERS_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_CYCLE || '5' }}
+          RESEND_COOLDOWN_HOURS: ${{ vars.RESEND_COOLDOWN_HOURS || '24' }}
+          PRICE_DROP_RETRIGGER_PCT: ${{ vars.PRICE_DROP_RETRIGGER_PCT || '10' }}
+          POST_DEMO_OFFERS: ${{ vars.POST_DEMO_OFFERS || 'false' }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python main.py --once --dry-run
+          else
+            python main.py --once
+          fi
