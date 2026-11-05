@@ -2,7 +2,8 @@ name: Publicar ofertas no Telegram
 
 on:
   schedule:
-    # A cada 4 horas (cron do GitHub Actions, UTC).
+    # 4 execucoes por dia, as 8h, 12h, 16h e 20h no horario da Bahia
+    # (UTC-3). O cron do GitHub Actions e sempre em UTC: 11, 15, 19 e 23.
     #
     # Conta de minutos (GitHub Free, repositorio PRIVADO = 2000 min/mes):
     #   */2 -> 12 jobs/dia = 360/mes x ~8 min = ~2880 min  (ESTOURA o limite)
@@ -11,7 +12,7 @@ on:
     #
     # Em repositorio PUBLICO os minutos sao gratis, entao da para usar "*/2".
     # Em publico, cuidado: repo sem atividade por 60 dias desativa o cron.
-    - cron: "0 */4 * * *"
+    - cron: "0 11,15,19,23 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -21,8 +22,9 @@ on:
 
 concurrency:
   group: bot-ofertas
-  # Duas execucoes nunca disputam o mesmo grupo nem o mesmo banco.
-  cancel-in-progress: true
+  # Duas execucoes nunca disputam o mesmo grupo nem o mesmo banco. A segunda
+  # espera a primeira terminar (cancelar no meio poderia duplicar ofertas).
+  cancel-in-progress: false
 
 jobs:
   publish:
