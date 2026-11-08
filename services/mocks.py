@@ -104,6 +104,7 @@ def mock_offers_for(store: str, cycle: int = 0) -> list[Offer]:
             Offer(
                 store=store,
                 external_id=str(item["external_id"]),
+                product_id=str(item["external_id"]),
                 title=str(item["title"]),
                 url=str(item["url"]),
                 current_price=current,

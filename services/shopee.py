@@ -263,6 +263,8 @@ class ShopeeAdapter(StoreAdapter):
         return Offer(
             store=self.name,
             external_id=str(item_id),
+            # Na Shopee o itemid ja e a identidade do produto.
+            product_id=str(item_id),
             title=str(name),
             url=url,
             current_price=round(current, 2),

@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS offers (
     is_demo         INTEGER NOT NULL DEFAULT 0,
     first_seen_at   BIGINT NOT NULL,
     last_sent_at    BIGINT,
-    send_count      INTEGER NOT NULL DEFAULT 0
+    send_count      INTEGER NOT NULL DEFAULT 0,
+    product_key     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -108,6 +109,28 @@ class Database:
                 cur.execute(self._sql(statement))
         self._conn.commit()
 
+        # Bancos criados antes da coluna product_key existem no Supabase do
+        # usuario: o ALTER e idempotente (ignorar "ja existe"). Precisa
+        # acontecer ANTES do indice, senao o indice quebra em tabela velha.
+        try:
+            with self._cursor() as cur:
+                cur.execute(self._sql("ALTER TABLE offers ADD COLUMN product_key TEXT"))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()  # a coluna ja existe: nada a fazer
+
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    self._sql(
+                        "CREATE INDEX IF NOT EXISTS idx_offers_product_key "
+                        "ON offers (product_key)"
+                    )
+                )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()
@@ -148,13 +171,14 @@ class Database:
                     INSERT INTO offers (
                         url_hash, store, external_id, title, url, current_price,
                         original_price, discount_pct, is_demo, first_seen_at,
-                        last_sent_at, send_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)
+                        last_sent_at, send_count, product_key
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)
                     ON CONFLICT (url_hash) DO UPDATE SET
                         current_price  = EXCLUDED.current_price,
                         original_price = EXCLUDED.original_price,
                         discount_pct   = EXCLUDED.discount_pct,
-                        title          = EXCLUDED.title
+                        title          = EXCLUDED.title,
+                        product_key    = COALESCE(EXCLUDED.product_key, offers.product_key)
                     """
                 ),
                 (
@@ -168,6 +192,7 @@ class Database:
                     offer.effective_discount,
                     1 if offer.is_demo else 0,
                     now,
+                    offer.product_key,
                 ),
             )
         self._conn.commit()
@@ -195,6 +220,37 @@ class Database:
             )
         self._conn.commit()
 
+    def _latest_for_product(self, offer: Offer) -> dict | None:
+        """Registro mais recente do PRODUTO (qualquer anuncio do mesmo produto).
+
+        Sem isso, o Mercado Livre reentrava no grupo com o mesmo produto: o
+        bot escolhe o anuncio mais barato entre os vendedores e, quando o
+        preco oscila entre eles, o `item_id` (e a URL) mudam -- o hash da
+        URL dizia "oferta nova" e o produto voltava ao grupo.
+        """
+        key = offer.product_key
+        if not key:
+            return self.get_offer(offer.url_hash)
+        with self._cursor() as cur:
+            # `last_sent_at IS NULL` primeiro: quem ja foi enviado tem
+            # prioridade sobre o registro que so foi visto.
+            cur.execute(
+                self._sql(
+                    """
+                    SELECT * FROM offers
+                    WHERE product_key = ?
+                    ORDER BY (last_sent_at IS NULL), last_sent_at DESC, first_seen_at DESC
+                    LIMIT 1
+                    """
+                ),
+                (key,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            # Registros antigos (antes da coluna product_key) so tem a URL.
+            return self.get_offer(offer.url_hash)
+        return dict(row)
+
     def should_send(
         self,
         offer: Offer,
@@ -204,7 +260,7 @@ class Database:
     ) -> tuple[bool, str]:
         """Decide se a oferta pode ser enviada agora. Retorna (enviar, motivo)."""
         now = now or int(time.time())
-        row = self.get_offer(offer.url_hash)
+        row = self._latest_for_product(offer)
 
         if row is None:
             return True, "primeira vez"
@@ -213,17 +269,23 @@ class Database:
 
         last_sent_at = int(row["last_sent_at"])
         elapsed_hours = (now - last_sent_at) / 3600.0
-        previous_price = float(row["current_price"] or 0)
 
-        if previous_price > 0 and offer.current_price < previous_price:
-            drop_pct = (1 - offer.current_price / previous_price) * 100
-            if drop_pct >= price_drop_retrigger_pct:
-                return True, f"preco caiu {drop_pct:.0f}% (de {previous_price:.2f})"
+        # Queda de preco so vale no MESMO anuncio. Comparar com o preco de
+        # outro vendedor do mesmo produto faria o bot reenviar o produto
+        # sempre que o preco oscila entre os anuncios -- de novo, a
+        # duplicata que a gente quer evitar.
+        same_listing = self.get_offer(offer.url_hash)
+        if same_listing and same_listing.get("last_sent_at"):
+            previous_price = float(same_listing["current_price"] or 0)
+            if previous_price > 0 and offer.current_price < previous_price:
+                drop_pct = (1 - offer.current_price / previous_price) * 100
+                if drop_pct >= price_drop_retrigger_pct:
+                    return True, f"preco caiu {drop_pct:.0f}% (de {previous_price:.2f})"
 
         if elapsed_hours >= cooldown_hours:
             return True, f"cooldown de {cooldown_hours}h expirado ({elapsed_hours:.1f}h)"
 
-        return False, f"duplicada (enviada ha {elapsed_hours:.1f}h)"
+        return False, f"duplicada (produto ja enviado ha {elapsed_hours:.1f}h)"
 
     # ---------------------------------------------------------------- runs
     def start_run(self, now: int | None = None) -> int:

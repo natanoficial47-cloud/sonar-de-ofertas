@@ -439,6 +439,10 @@ class MercadoLivreAdapter(StoreAdapter):
         return Offer(
             store=self.name,
             external_id=str(item_id),
+            # Identidade do PRODUTO de catalogo: varios anuncios (item_id
+            # diferentes) pertencem ao mesmo produto. E por ela que a
+            # anti-duplicidade reconhece que o produto ja foi enviado.
+            product_id=str(catalog_id) if catalog_id else str(item_id),
             title=name,
             url=self._product_url(catalog_id, str(item_id)),
             current_price=round(price, 2),

@@ -5,6 +5,12 @@ on:
     # 4 execucoes por dia, as 8h, 12h, 16h e 20h no horario da Bahia
     # (UTC-3). O cron do GitHub Actions e sempre em UTC: 11, 15, 19 e 23.
     #
+    # O MINUTO E QUEBRADO DE PROPOSITO (17, e nao 0): o GitHub concentra os
+    # jobs agendados no comeco da hora, e essa e a hora de maior fila do
+    # runner. Disparando em :17 o job entra numa leva menos disputada e
+    # comeca a rodar quase na hora. (O cron do GitHub nunca e exato: o
+    # atraso normal e de 5-20 min mesmo assim.)
+    #
     # Conta de minutos (GitHub Free, repositorio PRIVADO = 2000 min/mes):
     #   */2 -> 12 jobs/dia = 360/mes x ~8 min = ~2880 min  (ESTOURA o limite)
     #   */3 ->  8 jobs/dia = 240/mes x ~8 min = ~1920 min  (cabe, apertado)
@@ -12,7 +18,7 @@ on:
     #
     # Em repositorio PUBLICO os minutos sao gratis, entao da para usar "*/2".
     # Em publico, cuidado: repo sem atividade por 60 dias desativa o cron.
-    - cron: "0 11,15,19,23 * * *"
+    - cron: "17 11,15,19,23 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -31,7 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     # O ciclo varre ~440 requests do Mercado Livre com espera entre eles:
     # 10 min era apertado demais (o job era morto no meio da varredura).
-    timeout-minutes: 20
+    # Com 3 tentativas de retry, 35 min cobrem 1 ciclo (~8 min) + 2
+    # novas tentativas com espera.
+    timeout-minutes: 35
 
     env:
       # Aceita os dois nomes de secret: o padrao e o legado (TELEGRAM_TOKEN /
@@ -107,10 +115,28 @@ jobs:
         # nada e descobrir o problema no grupo.
         run: python scripts/check_sources.py --ping
 
-      - name: Publicar ofertas
+      - name: Publicar ofertas (com retry)
+        # O agendador do GitHub e falho: fila, rate limit da API do ML ou um
+        # timeout de rede podem derrubar o ciclo e a oferta simplesmente nao
+        # sai. Aqui o ciclo e repetido ate 3 vezes.
+        #
+        # Repetir e seguro: a anti-duplicidade mora no banco (Supabase), nao
+        # na memoria do processo -- o que ja foi enviado no ciclo anterior
+        # nao volta.
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            python main.py --once --dry-run
-          else
-            python main.py --once
-          fi
+          status=1
+          for attempt in 1 2 3; do
+            echo "::group::Tentativa $attempt de 3"
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              python main.py --once --dry-run && status=0
+            else
+              python main.py --once && status=0
+            fi
+            echo "::endgroup::"
+            if [ "$status" = "0" ]; then
+              break
+            fi
+            echo "::warning::Tentativa $attempt falhou. Nova tentativa em 45s."
+            sleep 45
+          done
+          exit $status

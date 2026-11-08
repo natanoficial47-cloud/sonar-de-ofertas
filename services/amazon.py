@@ -272,6 +272,8 @@ class AmazonAdapter(StoreAdapter):
         return Offer(
             store=self.name,
             external_id=str(asin),
+            # Na Amazon o ASIN ja e a identidade do produto.
+            product_id=str(asin),
             title=str(title),
             url=str(detail_url),
             current_price=round(float(current), 2),

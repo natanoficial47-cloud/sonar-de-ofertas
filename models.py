@@ -41,12 +41,33 @@ class Offer:
     # Serve para rotular a oferta no grupo e para garantir variedade: o
     # grupo precisa misturar nichos, nao so o que tem o maior desconto.
     keyword: str | None = None
+    # Identidade do PRODUTO (nao do anuncio). No Mercado Livre o mesmo
+    # produto de catalogo tem varios anuncios (vendedores) com `item_id`
+    # diferentes: o bot escolhe o mais barato, e quando o preco oscila
+    # entre eles o `item_id` muda -- se a anti-duplicidade olhasse so a
+    # URL, o mesmo produto voltaria ao grupo como "oferta nova".
+    # Aqui entra o id de catalogo (ML), o ASIN (Amazon) ou o itemid
+    # (Shopee).
+    product_id: str | None = None
 
     @property
     def url_hash(self) -> str:
-        """Hash estavel da URL, usado como chave de anti-duplicidade."""
+        """Hash estavel da URL, usado como chave de registro da oferta."""
         normalized = self.url.strip().lower()
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    @property
+    def product_key(self) -> str | None:
+        """Chave de anti-duplicidade por PRODUTO (loja + id de catalogo).
+
+        E o que impede o grupo de receber o mesmo produto duas vezes so
+        porque o anuncio mais barato mudou de vendedor. Quando nao ha
+        id de produto (fonte sem catalogo), cai no hash da URL.
+        """
+        if not self.product_id:
+            return None
+        raw = f"{self.store.strip().lower()}:{self.product_id.strip().lower()}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     @property
     def effective_discount(self) -> float:

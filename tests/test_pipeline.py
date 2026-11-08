@@ -162,6 +162,107 @@ def test_segunda_vazao_e_bloqueada(settings, db):
     assert "duplicada" in reason
 
 
+def test_mesmo_produto_com_outro_anuncio_e_bloqueado(settings, db):
+    """Regressao: o produto ja foi enviado, mas o anuncio mais barato mudou.
+
+    No Mercado Livre o mesmo produto de catalogo tem varios anuncios (item_id
+    diferentes). O bot escolhe o mais barato e, quando o preco oscila entre
+    eles, a URL muda. Se a anti-duplicidade so olhasse a URL, o produto
+    voltaria ao grupo como se fosse oferta nova.
+    """
+    enviado = make_offer(
+        store="Mercado Livre",
+        product_id="MLB29000729",
+        external_id="MLB1111111111",
+        url="https://www.mercadolivre.com.br/p/MLB29000729?item_id=MLB1111111111",
+        current_price=100.0,
+    )
+    db.record_seen(enviado)
+    db.mark_sent(enviado)
+
+    # Mesmo produto de catalogo, outro anuncio (item_id e URL diferentes).
+    outro_anuncio = make_offer(
+        store="Mercado Livre",
+        product_id="MLB29000729",
+        external_id="MLB2222222222",
+        url="https://www.mercadolivre.com.br/p/MLB29000729?item_id=MLB2222222222",
+        current_price=98.0,
+    )
+
+    send, reason = db.should_send(
+        outro_anuncio, cooldown_hours=24, price_drop_retrigger_pct=10
+    )
+    assert send is False, "o mesmo produto nao pode voltar ao grupo"
+    assert "duplicada" in reason
+
+
+def test_oferta_sem_product_id_segue_pela_url(settings, db):
+    """Fonte sem id de catalogo continua usando o hash da URL."""
+    oferta = make_offer(url="https://shopee.com.br/produto/123")
+    db.record_seen(oferta)
+    db.mark_sent(oferta)
+
+    send, _ = db.should_send(oferta, cooldown_hours=24, price_drop_retrigger_pct=10)
+    assert send is False
+
+
+def test_oscilacao_de_preco_entre_anuncios_nao_reenvia(settings, db):
+    """O preco do MESMO anuncio que caiu e motivo legitimo de reenvio.
+
+    Ja o preco de OUTRO vendedor do mesmo produto e ruido de mercado: nao
+    pode virar motivo para repetir a oferta no grupo.
+    """
+    enviado = make_offer(
+        store="Mercado Livre",
+        product_id="MLB40341086",
+        external_id="MLB3333333333",
+        url="https://www.mercadolivre.com.br/p/MLB40341086?item_id=MLB3333333333",
+        current_price=120.0,
+    )
+    db.record_seen(enviado)
+    db.mark_sent(enviado)
+
+    # Outro vendedor do MESMO produto, 20% mais barato: o preco do anuncio
+    # enviado (120) nao mudou, entao nao ha motivo para reenviar.
+    mais_barato = make_offer(
+        store="Mercado Livre",
+        product_id="MLB40341086",
+        external_id="MLB4444444444",
+        url="https://www.mercadolivre.com.br/p/MLB40341086?item_id=MLB4444444444",
+        current_price=96.0,
+    )
+    send, _ = db.should_send(
+        mais_barato, cooldown_hours=24, price_drop_retrigger_pct=10
+    )
+    assert send is False
+
+
+def test_queda_de_preco_no_mesmo_anuncio_reenvia(settings, db):
+    """Esse e o gatilho legitimo: o MESMO anuncio ficou mais barato."""
+    oferta = make_offer(
+        store="Mercado Livre",
+        product_id="MLB40341086",
+        external_id="MLB5555555555",
+        url="https://www.mercadolivre.com.br/p/MLB40341086?item_id=MLB5555555555",
+        current_price=120.0,
+    )
+    db.record_seen(oferta)
+    db.mark_sent(oferta)
+
+    mais_barato = make_offer(
+        store="Mercado Livre",
+        product_id="MLB40341086",
+        external_id="MLB5555555555",
+        url="https://www.mercadolivre.com.br/p/MLB40341086?item_id=MLB5555555555",
+        current_price=100.0,
+    )
+    send, reason = db.should_send(
+        mais_barato, cooldown_hours=24, price_drop_retrigger_pct=10
+    )
+    assert send is True
+    assert "preco caiu" in reason
+
+
 def test_reenvia_depois_do_cooldown(settings, db):
     oferta = make_offer()
     db.record_seen(oferta)
