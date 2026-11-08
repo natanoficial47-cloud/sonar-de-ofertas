@@ -37,9 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     # O ciclo varre ~440 requests do Mercado Livre com espera entre eles:
     # 10 min era apertado demais (o job era morto no meio da varredura).
-    # Com 3 tentativas de retry, 35 min cobrem 1 ciclo (~8 min) + 2
-    # novas tentativas com espera.
-    timeout-minutes: 35
+    # Com 3 tentativas de retry, 45 min cobrem 1 ciclo (agora com ~32
+    # termos de busca, leva ~8 min) + 2 novas tentativas com espera.
+    timeout-minutes: 45
 
     env:
       # Aceita os dois nomes de secret: o padrao e o legado (TELEGRAM_TOKEN /
@@ -69,7 +69,7 @@ jobs:
       MERCADOLIVRE_SITE_ID: ${{ vars.MERCADOLIVRE_SITE_ID || 'MLB' }}
       MERCADOLIVRE_SEARCH_LIMIT: ${{ vars.MERCADOLIVRE_SEARCH_LIMIT || '100' }}
       MERCADOLIVRE_SEARCH_OFFSETS: ${{ vars.MERCADOLIVRE_SEARCH_OFFSETS || '0,100' }}
-      MERCADOLIVRE_MAX_PROBES: ${{ vars.MERCADOLIVRE_MAX_PROBES || '400' }}
+      MERCADOLIVRE_MAX_PROBES: ${{ vars.MERCADOLIVRE_MAX_PROBES || '700' }}
       MERCADOLIVRE_MAX_ITEMS: ${{ vars.MERCADOLIVRE_MAX_ITEMS || '20' }}
       MERCADOLIVRE_REQUEST_DELAY: ${{ vars.MERCADOLIVRE_REQUEST_DELAY || '0.3' }}
       MERCADOLIVRE_MAX_RETRIES: ${{ vars.MERCADOLIVRE_MAX_RETRIES || '3' }}
@@ -77,7 +77,7 @@ jobs:
       MERCADOLIVRE_COMPARISON_MIN_RATIO: ${{ vars.MERCADOLIVRE_COMPARISON_MIN_RATIO || '0.35' }}
 
       # Termos buscados: 22 nichos em 7 segmentos (nao so tech).
-      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'fone bluetooth,smartwatch,cadeira gamer,notebook,monitor gamer,mouse gamer rgb,teclado gamer,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete de yoga,suplemento,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,comedouro para gato,brinquedo para cachorro' }}
+      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'fone bluetooth,smartwatch,cadeira gamer,notebook,monitor gamer,mouse gamer rgb,teclado gamer,microfone condenser,relogio masculine,furadeira de impacto,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete antiderrapante,tapete de yoga,suplemento,bico de papo,multifuncional treino,rolo de liberacao muscular,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,kit skincare,comedouro para gato,brinquedo para cachorro,tapete higienico pet,coleira antipulgas,racao para cachorro,bebedouro automatico gato,patinete eletrico' }}
       KEYWORDS_AMAZON: ${{ vars.KEYWORDS_AMAZON || 'notebook,smartwatch' }}
       KEYWORDS_SHOPEE: ${{ vars.KEYWORDS_SHOPEE || 'fone bluetooth,tenis' }}
       # So o Mercado Livre tem credencial configurada por enquanto. Amazon e
@@ -88,7 +88,7 @@ jobs:
       MIN_COMPARISON_PCT: ${{ vars.MIN_COMPARISON_PCT || '25' }}
       MIN_PRICE: ${{ vars.MIN_PRICE || '20' }}
       MAX_PRICE: ${{ vars.MAX_PRICE || '3000' }}
-      MAX_OFFERS_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_CYCLE || '6' }}
+      MAX_OFFERS_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_CYCLE || '8' }}
       # Variedade: no maximo 1 oferta da mesma categoria por ciclo, senao o
       # grupo inteiro do dia sai de um nicho so.
       MAX_OFFERS_PER_KEYWORD_PER_CYCLE: ${{ vars.MAX_OFFERS_PER_KEYWORD_PER_CYCLE || '1' }}

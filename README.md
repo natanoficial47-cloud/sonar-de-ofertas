@@ -202,17 +202,27 @@ por R$ 76,83 com o frete. As regras que evitam isso:
    oficial: a API de catálogo não devolve o nome da categoria, e inventar um
    rótulo seria mentir.
 
-**Nichos buscados** (22 termos, de 7 segmentos): tech (fone bluetooth,
+**Nichos buscados** (35 termos, de 9 segmentos): tech (fone bluetooth,
 smartwatch, cadeira gamer, notebook, monitor gamer, mouse gamer rgb, teclado
-gamer), casa e cozinha (air fryer, garrafa térmica, panela de pressão, jogo de
-panelas, tapete de sala, quadro decorativo), fitness (tapete de yoga,
-suplemento), moda (tênis de corrida, mochila, óculos de sol), beleza (secador
-de cabelo, perfume) e pet (comedouro para gato, brinquedo para cachorro).
+gamer, microfone condenser, relógio masculine, furadeira de impacto), casa e
+cozinha (air fryer, garrafa térmica, panela de pressão, jogo de panelas,
+tapete de sala, quadro decorativo, tapete antiderrapante), fitness (tapete de
+yoga, suplemento, bico de papo, multifuncional treino, rolo de liberação
+muscular), moda (tênis de corrida, mochila, óculos de sol), beleza (secador de
+cabelo, perfume, kit skincare), pet (comedouro para gato, brinquedo para
+cachorro, tapete higiênico pet, coleira antipulgas, ração para cachorro,
+bebedouro automático gato) e esporte (patinete elétrico).
 
 > Termos genéricos funcionam melhor que termos super específicos: `organizador`
 > trazia **livros** ("Livro ... (Organizador)") e `cookset` devolvia só **8
 > resultados** (cookset de camping). Cada termo novo merece uma sondagem
 > prévia, olhando os nomes que voltam.
+>
+> Na sondagem, contam só os termos que voltam com **anúncios de verdade** (com
+> preço), **desconto** e de preferência **frete grátis**. Termos como `webcam`,
+> `cafeteira`, `ventilador`, `aspirador` e `power bank` devolvem 20 produtos de
+> catálogo, mas **zero anúncios** nos primeiros produtos — e foram descartados
+> por isso.
 
 Para liberar a busca clássica (que traz o desconto de tabela de quase todos os
 anúncios e o `permalink` oficial):
@@ -410,8 +420,30 @@ pode ser disparado na mão (*Run workflow*), com a opção de dry-run.
   desativado só por inatividade de 60 dias no repositório inteiro.)
 - O grupo `concurrency` impede duas execuções simultâneas (uma cancela a
   outra), então o bot nunca publica em duplicidade.
-- `timeout-minutes: 20` dá folga para a varredura do catálogo (o ciclo real
-  medido levou 5m34s com 95 ofertas brutas e 400 sondagens).
+- `timeout-minutes: 45` dá folga para a varredura do catálogo (o ciclo real
+  medido levou 7m42s com 35 termos de busca e 700 sondagens) **e** para as
+  novas tentativas do retry.
+
+#### Horário quebrado e retry (por que o bot às vezes atrasa)
+
+O cron do GitHub é **inexato**: o agendador não dispara na hora — ele enfileira
+e o job começa depois (5–20 min é normal, e no horário de pico do dia a fila
+cresce muito mais). Duas coisas no workflow resolvem isso:
+
+1. **Minuto quebrado** — o agendamento é `17 11,15,19,23 * * *` (8h17, 12h17,
+   16h17 e 20h17 na Bahia), e não `0 ...`. Todo mundo usa `0`; o GitHub
+   concentra os jobs no começo da hora, que é a leva mais disputada do
+   runner. Disparando em `:17` o job entra numa leva mais vazia e **começa a
+   rodar quase na hora**.
+2. **Retry no job** — o passo de publicação repete o ciclo até **3 vezes**,
+   com 45s de espera entre elas. Antes, um 429 do Mercado Livre ou um timeout
+   de rede derrubava o ciclo e a oferta simplesmente não saía naquele
+   horário — sem nenhuma tentativa nova. Repetir é seguro: a anti-duplicidade
+   mora no banco (Supabase), não na memória do processo, então o que já foi
+   enviado no ciclo anterior não volta.
+
+> O único jeito de acertar o minuto é sair do GitHub Actions (VPS com cron
+> próprio). Para um grupo de ofertas, 15 min de atraso não muda nada.
 
 ### Daemon ou cron? (por que não precisa de APScheduler)
 
@@ -496,6 +528,12 @@ oferta de demonstração escapa sem você pedir.
 
 ### Duplicata no grupo: o que foi corrigido
 
+Foram **duas** causas independentes de duplicata, e as duas precisam estar
+fechadas: uma no envio (timeout do Telegram) e outra na coleta (chave de
+identidade errada).
+
+#### 1. O timeout do `python-telegram-bot` (duplicata no envio)
+
 Este era o único jeito de a mesma oferta aparecer duas vezes — e **não** era o
 pipeline: o banco local confirma zero duplicatas por título, produto e URL.
 
@@ -514,6 +552,41 @@ retry reenviava. O que mudou em `telegram_client.py`:
 
 O princípio: **na dúvida, não reenvia**. Perder uma oferta é ruim; duplicar no
 grupo é pior — porque o usuário vê a mesma oferta duas vezes e desconfia do bot.
+
+#### 2. A chave de duplicidade era a URL do anúncio (duplicata na coleta)
+
+Essa era a segunda fonte, e é a que mais voltava: no Mercado Livre **o mesmo
+produto de catálogo tem vários anúncios** (um por vendedor). O bot escolhe o
+anúncio com menor preço final, e o link leva o `item_id` desse anúncio:
+
+```
+https://www.mercadolivre.com.br/p/MLB29000729?item_id=MLB7758756978
+```
+
+A anti-duplicidade olhava o **hash da URL**. Quando o preço oscilava entre os
+vendedores, o anúncio mais barato mudava — mudava o `item_id`, mudava a URL, e
+o bot concluía que era oferta nova. **O mesmo produto voltava ao grupo com
+outra URL.**
+
+Agora a chave é o **produto**, não o anúncio:
+
+| Onde | Antes | Agora |
+| --- | --- | --- |
+| Identidade | `url_hash` (hash da URL) | `product_key` = hash de `loja + id de catálogo` |
+| Mercado Livre | — | `catalog_product_id` (o `MLB…` do produto) |
+| Amazon | — | `asin` |
+| Shopee | — | `itemid` |
+| Gatilho de reenvio | qualquer queda de preço | só queda no **mesmo anúncio** |
+| Coluna no banco | — | `offers.product_key` (com índice) |
+
+O efeito colateral que importa: a queda de preço que **vivia num anúncio
+diferente** (ruído de mercado entre vendedores) não vira mais motivo para
+repetir a oferta. Só a queda real do **mesmo** anúncio reenvia — que é o
+gatilho legítimo.
+
+> Bancos criados antes dessa mudança continuam funcionando: a coluna
+> `product_key` é adicionada na migração (o `ALTER TABLE` é idempotente) e as
+> linhas antigas caem no fallback por URL.
 
 ## O que mudou em relação ao guia original
 

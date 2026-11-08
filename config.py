@@ -73,6 +73,9 @@ DEFAULT_ML_KEYWORDS: tuple[str, ...] = (
     "monitor gamer",
     "mouse gamer rgb",
     "teclado gamer",
+    "microfone condenser",
+    "relogio masculine",
+    "furadeira de impacto",
     # casa e cozinha
     "air fryer",
     "garrafa termica",
@@ -80,9 +83,13 @@ DEFAULT_ML_KEYWORDS: tuple[str, ...] = (
     "jogo de panelas",
     "tapete de sala",
     "quadro decorativo",
+    "tapete antiderrapante",
     # fitness e saude
     "tapete de yoga",
     "suplemento",
+    "bico de papo",
+    "multifuncional treino",
+    "rolo de liberacao muscular",
     # moda e acessorios
     "tenis de corrida",
     "mochila",
@@ -90,9 +97,16 @@ DEFAULT_ML_KEYWORDS: tuple[str, ...] = (
     # beleza
     "secador de cabelo",
     "perfume",
+    "kit skincare",
     # pet
     "comedouro para gato",
     "brinquedo para cachorro",
+    "tapete higienico pet",
+    "coleira antipulgas",
+    "racao para cachorro",
+    "bebedouro automatico gato",
+    # esporte
+    "patinete eletrico",
 )
 
 
@@ -164,8 +178,10 @@ class MercadoLivreSettings:
     search_limit: int = 100
     search_offsets: tuple[int, ...] = (0, 100)
     # Quantos produtos vao ter os anuncios consultados (cada consulta custa 1
-    # request e a API tem rate limit).
-    max_item_probes: int = 400
+    # request e a API tem rate limit). Medido: 400 -> 4 ofertas aprovadas;
+    # 700 -> 6 aprovadas em 7m42s; 900 -> as mesmas 6, mas 10 min. 700 e o
+    # ponto ideal (mais sondagem nao rend mais nada).
+    max_item_probes: int = 700
     max_items_per_product: int = 20
     request_delay_seconds: float = 0.3
     max_retries: int = 3
