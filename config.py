@@ -76,6 +76,7 @@ DEFAULT_ML_KEYWORDS: tuple[str, ...] = (
     "microfone condenser",
     "relogio masculine",
     "furadeira de impacto",
+    "ssd externo",
     # casa e cozinha
     "air fryer",
     "garrafa termica",
@@ -105,6 +106,7 @@ DEFAULT_ML_KEYWORDS: tuple[str, ...] = (
     "coleira antipulgas",
     "racao para cachorro",
     "bebedouro automatico gato",
+    "areia para gato",
     # esporte
     "patinete eletrico",
 )

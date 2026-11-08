@@ -77,7 +77,7 @@ jobs:
       MERCADOLIVRE_COMPARISON_MIN_RATIO: ${{ vars.MERCADOLIVRE_COMPARISON_MIN_RATIO || '0.35' }}
 
       # Termos buscados: 22 nichos em 7 segmentos (nao so tech).
-      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'fone bluetooth,smartwatch,cadeira gamer,notebook,monitor gamer,mouse gamer rgb,teclado gamer,microfone condenser,relogio masculine,furadeira de impacto,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete antiderrapante,tapete de yoga,suplemento,bico de papo,multifuncional treino,rolo de liberacao muscular,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,kit skincare,comedouro para gato,brinquedo para cachorro,tapete higienico pet,coleira antipulgas,racao para cachorro,bebedouro automatico gato,patinete eletrico' }}
+      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'fone bluetooth,smartwatch,cadeira gamer,notebook,monitor gamer,mouse gamer rgb,teclado gamer,microfone condenser,relogio masculine,furadeira de impacto,ssd externo,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete antiderrapante,tapete de yoga,suplemento,bico de papo,multifuncional treino,rolo de liberacao muscular,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,kit skincare,comedouro para gato,brinquedo para cachorro,tapete higienico pet,coleira antipulgas,racao para cachorro,bebedouro automatico gato,areia para gato,patinete eletrico' }}
       KEYWORDS_AMAZON: ${{ vars.KEYWORDS_AMAZON || 'notebook,smartwatch' }}
       KEYWORDS_SHOPEE: ${{ vars.KEYWORDS_SHOPEE || 'fone bluetooth,tenis' }}
       # So o Mercado Livre tem credencial configurada por enquanto. Amazon e
