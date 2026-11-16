@@ -35,10 +35,10 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # O ciclo varre ~440 requests do Mercado Livre com espera entre eles:
+    # O ciclo varre ~1.200 requests do Mercado Livre com espera entre eles:
     # 10 min era apertado demais (o job era morto no meio da varredura).
-    # Com 3 tentativas de retry, 45 min cobrem 1 ciclo (agora com ~32
-    # termos de busca, leva ~8 min) + 2 novas tentativas com espera.
+    # Com 3 tentativas de retry, 45 min cobrem 1 ciclo (com 59 termos de busca
+    # e 1.000 sondagens, leva ~12 min) + 2 novas tentativas com espera.
     timeout-minutes: 45
 
     env:
