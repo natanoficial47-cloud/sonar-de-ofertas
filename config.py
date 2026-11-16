@@ -66,17 +66,39 @@ def _is_ci() -> bool:
 # "cadeira gamer executiva com massageador" nao acha nada.
 DEFAULT_ML_KEYWORDS: tuple[str, ...] = (
     # tech
-    "fone bluetooth",
-    "smartwatch",
-    "cadeira gamer",
+    "notebook gamer",
+    "fone de ouvido gamer",
+    "fone de ouvido cancelamento",
+    "fone de ouvido bluetooth",
+    "headset",
+    "headset gamer",
+    "headset bluetooth",
+    "hd externo",
+    "controle ps5",
+    "controle xbox",
+    "playstation 5",
+    "console playstation",
+    "xbox series x",
+    "drone",
+    "placa de video",
+    "kit teclado e mouse",
+    "camera de vigilancia",
+    "monitor 144hz",
+    "smartphone",
+    "celular",
+    "tablet gaming",
     "notebook",
+    "tablet",
+    "smartwatch",
+    "fone bluetooth",
+    "cadeira gamer",
     "monitor gamer",
     "mouse gamer rgb",
     "teclado gamer",
     "microfone condenser",
+    "ssd externo",
     "relogio masculine",
     "furadeira de impacto",
-    "ssd externo",
     # casa e cozinha
     "air fryer",
     "garrafa termica",
@@ -183,7 +205,7 @@ class MercadoLivreSettings:
     # request e a API tem rate limit). Medido: 400 -> 4 ofertas aprovadas;
     # 700 -> 6 aprovadas em 7m42s; 900 -> as mesmas 6, mas 10 min. 700 e o
     # ponto ideal (mais sondagem nao rend mais nada).
-    max_item_probes: int = 700
+    max_item_probes: int = 1000
     max_items_per_product: int = 20
     request_delay_seconds: float = 0.3
     max_retries: int = 3
@@ -222,7 +244,7 @@ class Settings:
     min_comparison_pct: float = 25.0
     min_price: float = 20.0
     max_price: float = 3000.0
-    max_offers_per_cycle: int = 6
+    max_offers_per_cycle: int = 8
     # Quantas ofertas da mesma categoria (termo de busca) podem entrar no
     # mesmo ciclo. Com o teto em 1, o grupo nunca fica so com a categoria
     # que tem o maior desconto -- o mix e garantido.
@@ -277,7 +299,7 @@ class Settings:
                 search_offsets=_ints(
                     "MERCADOLIVRE_SEARCH_OFFSETS", (0, 100)
                 ),
-                max_item_probes=_int("MERCADOLIVRE_MAX_PROBES", 400),
+                max_item_probes=_int("MERCADOLIVRE_MAX_PROBES", 1000),
                 max_items_per_product=_int("MERCADOLIVRE_MAX_ITEMS", 20),
                 request_delay_seconds=_float("MERCADOLIVRE_REQUEST_DELAY", 0.3),
                 max_retries=_int("MERCADOLIVRE_MAX_RETRIES", 3),
@@ -294,7 +316,7 @@ class Settings:
             min_comparison_pct=_float("MIN_COMPARISON_PCT", 25.0),
             min_price=_float("MIN_PRICE", 20.0),
             max_price=_float("MAX_PRICE", 3000.0),
-            max_offers_per_cycle=_int("MAX_OFFERS_PER_CYCLE", 6),
+            max_offers_per_cycle=_int("MAX_OFFERS_PER_CYCLE", 8),
             max_offers_per_keyword_per_cycle=_int(
                 "MAX_OFFERS_PER_KEYWORD_PER_CYCLE", 1
             ),

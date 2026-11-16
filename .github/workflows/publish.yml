@@ -69,7 +69,7 @@ jobs:
       MERCADOLIVRE_SITE_ID: ${{ vars.MERCADOLIVRE_SITE_ID || 'MLB' }}
       MERCADOLIVRE_SEARCH_LIMIT: ${{ vars.MERCADOLIVRE_SEARCH_LIMIT || '100' }}
       MERCADOLIVRE_SEARCH_OFFSETS: ${{ vars.MERCADOLIVRE_SEARCH_OFFSETS || '0,100' }}
-      MERCADOLIVRE_MAX_PROBES: ${{ vars.MERCADOLIVRE_MAX_PROBES || '700' }}
+      MERCADOLIVRE_MAX_PROBES: ${{ vars.MERCADOLIVRE_MAX_PROBES || '1000' }}
       MERCADOLIVRE_MAX_ITEMS: ${{ vars.MERCADOLIVRE_MAX_ITEMS || '20' }}
       MERCADOLIVRE_REQUEST_DELAY: ${{ vars.MERCADOLIVRE_REQUEST_DELAY || '0.3' }}
       MERCADOLIVRE_MAX_RETRIES: ${{ vars.MERCADOLIVRE_MAX_RETRIES || '3' }}
@@ -77,7 +77,7 @@ jobs:
       MERCADOLIVRE_COMPARISON_MIN_RATIO: ${{ vars.MERCADOLIVRE_COMPARISON_MIN_RATIO || '0.35' }}
 
       # Termos buscados: 22 nichos em 7 segmentos (nao so tech).
-      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'fone bluetooth,smartwatch,cadeira gamer,notebook,monitor gamer,mouse gamer rgb,teclado gamer,microfone condenser,relogio masculine,furadeira de impacto,ssd externo,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete antiderrapante,tapete de yoga,suplemento,bico de papo,multifuncional treino,rolo de liberacao muscular,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,kit skincare,comedouro para gato,brinquedo para cachorro,tapete higienico pet,coleira antipulgas,racao para cachorro,bebedouro automatico gato,areia para gato,patinete eletrico' }}
+      KEYWORDS_MERCADOLIVRE: ${{ vars.KEYWORDS_MERCADOLIVRE || 'notebook gamer,fone de ouvido gamer,fone de ouvido cancelamento,fone de ouvido bluetooth,headset,headset gamer,headset bluetooth,hd externo,controle ps5,controle xbox,playstation 5,console playstation,xbox series x,drone,placa de video,kit teclado e mouse,camera de vigilancia,monitor 144hz,smartphone,celular,tablet gaming,notebook,tablet,smartwatch,fone bluetooth,cadeira gamer,monitor gamer,mouse gamer rgb,teclado gamer,microfone condenser,ssd externo,relogio masculine,furadeira de impacto,air fryer,garrafa termica,panela de pressao,jogo de panelas,tapete de sala,quadro decorativo,tapete antiderrapante,tapete de yoga,suplemento,bico de papo,multifuncional treino,rolo de liberacao muscular,tenis de corrida,mochila,oculos de sol,secador de cabelo,perfume,kit skincare,comedouro para gato,brinquedo para cachorro,tapete higienico pet,coleira antipulgas,racao para cachorro,bebedouro automatico gato,areia para gato,patinete eletrico' }}
       KEYWORDS_AMAZON: ${{ vars.KEYWORDS_AMAZON || 'notebook,smartwatch' }}
       KEYWORDS_SHOPEE: ${{ vars.KEYWORDS_SHOPEE || 'fone bluetooth,tenis' }}
       # So o Mercado Livre tem credencial configurada por enquanto. Amazon e

@@ -202,16 +202,34 @@ por R$ 76,83 com o frete. As regras que evitam isso:
    oficial: a API de catálogo não devolve o nome da categoria, e inventar um
    rótulo seria mentir.
 
-**Nichos buscados** (35 termos, de 9 segmentos): tech (fone bluetooth,
-smartwatch, cadeira gamer, notebook, monitor gamer, mouse gamer rgb, teclado
-gamer, microfone condenser, relógio masculine, furadeira de impacto), casa e
-cozinha (air fryer, garrafa térmica, panela de pressão, jogo de panelas,
-tapete de sala, quadro decorativo, tapete antiderrapante), fitness (tapete de
-yoga, suplemento, bico de papo, multifuncional treino, rolo de liberação
-muscular), moda (tênis de corrida, mochila, óculos de sol), beleza (secador de
-cabelo, perfume, kit skincare), pet (comedouro para gato, brinquedo para
-cachorro, tapete higiênico pet, coleira antipulgas, ração para cachorro,
-bebedouro automático gato) e esporte (patinete elétrico).
+**Nichos buscados** (59 termos, de 7 segmentos). O foco é **tech** — notebooks
+(normais e gamer), celulares/smartphones, smartwatches, headsets e afins —,
+com o resto dos segmentos mantidos para o grupo não virar uma loja de
+hardware: tech (notebook gamer, notebook, fone de ouvido gamer, fone de
+ouvido cancelamento, fone de ouvido bluetooth, headset, headset gamer, headset
+bluetooth, hd externo, controle ps5, controle xbox, playstation 5, console
+playstation, xbox series x, drone, placa de vídeo, kit teclado e mouse, câmera
+de vigilância, monitor 144hz, smartphone, celular, tablet gaming, tablet,
+smartwatch, fone bluetooth, cadeira gamer, monitor gamer, mouse gamer rgb,
+teclado gamer, microfone condenser, ssd externo, relógio masculine, furadeira
+de impacto), casa e cozinha (air fryer, garrafa térmica, panela de pressão,
+jogo de panelas, tapete de sala, quadro decorativo, tapete antiderrapante),
+fitness (tapete de yoga, suplemento, bico de papo, multifuncional treino, rolo
+de liberação muscular), moda (tênis de corrida, mochila, óculos de sol),
+beleza (secador de cabelo, perfume, kit skincare), pet (comedouro para gato,
+brinquedo para cachorro, tapete higiênico pet, coleira antipulgas, ração para
+cachorro, bebedouro automático gato) e esporte (patinete elétrico).
+
+> **Limitação da API pública (importante):** termos muito populares como
+> `tablet`, `smartwatch`, `notebook`, `ipad`, `iphone` e `smart watch`
+> devolvem **100 produtos de catálogo e zero anúncios** — o catálogo genérico
+> deles não expõe anúncio acessível. Não é bug do bot: a sondagem na página 1
+> e na página 2 (offset 0 e 100) confirmaram. `notebook gamer`,
+> `fone de ouvido gamer`, `headset`, `headset bluetooth`, `hd externo`,
+> `controle ps5`, `playstation 5`, `console playstation`, `drone`, `smartphone`
+> e `celular` funcionam bem e são a base do mix tech. Os termos `notebook`,
+> `tablet` e `smartwatch` foram mantidos na lista porque podem render em
+> outros momentos/sazonalidades do catálogo.
 
 > Termos genéricos funcionam melhor que termos super específicos: `organizador`
 > trazia **livros** ("Livro ... (Organizador)") e `cookset` devolvia só **8
@@ -421,7 +439,8 @@ pode ser disparado na mão (*Run workflow*), com a opção de dry-run.
 - O grupo `concurrency` impede duas execuções simultâneas (uma cancela a
   outra), então o bot nunca publica em duplicidade.
 - `timeout-minutes: 45` dá folga para a varredura do catálogo (o ciclo real
-  medido levou 7m42s com 35 termos de busca e 700 sondagens) **e** para as
+  medido levou 7m42s com 37 termos de busca e 700 sondagens; com 54 termos e
+  1.000 sondagens a expectativa fica na casa dos 11–14 min) **e** para as
   novas tentativas do retry.
 
 #### Horário quebrado e retry (por que o bot às vezes atrasa)
